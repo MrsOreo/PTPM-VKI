@@ -137,9 +137,9 @@ def main():
         result, message = validate_registration(login, pwd, confirm)
 
         if result:
-            print(f"✅ Успех: {message if message else 'Данные корректны'}")
+            print(f"Успех: {message if message else 'Данные корректны'}")
         else:
-            print(f"❌ Ошибка: {message}")
+            print(f"Ошибка: {message}")
 
     logger.info("Приложение завершило работу.")
 
