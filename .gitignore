@@ -9,6 +9,11 @@ env/
 *.pyo
 *.pyd
 
+# Файлы измерения покрытия кода
+.coverage
+.coverage.*
+htmlcov/
+
 # Локальные системные файлы операционных систем
 .DS_Store
 Thumbs.db
