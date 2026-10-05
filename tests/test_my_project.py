@@ -7,354 +7,300 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
 
-from my_project import (
-    LOGIN_MAX_LENGTH,
-    LOGIN_MIN_LENGTH,
-    PASSWORD_MAX_LENGTH,
-    PASSWORD_MIN_LENGTH,
-    RegistrationError,
-    is_valid_email,
-    is_valid_login,
-    is_valid_password,
-    is_valid_phone,
-    normalize_email,
-    normalize_phone,
-    register_user,
-    validate_registration,
-)
+from my_project import BLACKLIST, mask_password, validate_registration
 
-VALID_LOGIN = "ivan_2024"
-VALID_PASSWORD = "Passw0rd!"
-VALID_PASSWORD_CONFIRM = "Passw0rd!"
+VALID_LOGIN = "user_test_01"
+VALID_PASSWORD = "Пароль123!"
+VALID_PHONE = "+7-999-123-4567"
 VALID_EMAIL = "ivanov@mail.ru"
-VALID_PHONE = "+79991234567"
 
 
-class TestLoginValidation(unittest.TestCase):
-    """Проверки правил валидации логина."""
+class TestMaskPassword(unittest.TestCase):
+    def test_empty_password_is_masked_as_empty(self):
+        self.assertEqual(mask_password(""), "[MASKED:empty]")
 
-    def test_login_with_acceptable_symbols_is_accepted(self):
-        self.assertTrue(is_valid_login(VALID_LOGIN))
+    def test_password_is_replaced_with_prefix_of_sha256_hash(self):
+        expected = hashlib.sha256(VALID_PASSWORD.encode("utf-8")).hexdigest()[:8]
+        self.assertEqual(mask_password(VALID_PASSWORD), f"[MASKED:{expected}]")
 
-    def test_login_with_minimum_length_is_accepted(self):
-        login = "a" * LOGIN_MIN_LENGTH
-        self.assertTrue(is_valid_login(login))
+    def test_plain_password_is_never_present_in_mask(self):
+        self.assertNotIn(VALID_PASSWORD, mask_password(VALID_PASSWORD))
 
-    def test_login_with_maximum_length_is_accepted(self):
-        login = "a" + "b" * (LOGIN_MAX_LENGTH - 1)
-        self.assertTrue(is_valid_login(login))
-
-    def test_login_surrounded_by_spaces_is_trimmed_and_accepted(self):
-        self.assertTrue(is_valid_login("  " + VALID_LOGIN + "\n"))
-
-    def test_login_starting_with_digit_is_rejected(self):
-        self.assertFalse(is_valid_login("1ivan"))
-
-    def test_login_starting_with_underscore_is_rejected(self):
-        self.assertFalse(is_valid_login("_ivan"))
-
-    def test_login_shorter_than_minimum_length_is_rejected(self):
-        self.assertFalse(is_valid_login("a" * (LOGIN_MIN_LENGTH - 1)))
-
-    def test_login_longer_than_maximum_length_is_rejected(self):
-        self.assertFalse(is_valid_login("a" * (LOGIN_MAX_LENGTH + 1)))
-
-    def test_login_with_cyrillic_letters_is_rejected(self):
-        self.assertFalse(is_valid_login("иван"))
-
-    def test_login_with_special_symbols_is_rejected(self):
-        self.assertFalse(is_valid_login("ivan.petrov"))
-
-    def test_empty_login_is_rejected(self):
-        self.assertFalse(is_valid_login("   "))
-
-    def test_login_of_non_string_type_is_rejected(self):
-        for value in (None, 12345, ["ivan"]):
-            with self.subTest(value=value):
-                self.assertFalse(is_valid_login(value))
+    def test_password_of_non_string_type_is_masked_as_invalid(self):
+        self.assertEqual(mask_password(12345), "[MASKED:invalid]")
+        self.assertEqual(mask_password(None), "[MASKED:invalid]")
 
 
-class TestPasswordValidation(unittest.TestCase):
-    """Проверки требований к паролю."""
+class TestPasswordRules(unittest.TestCase):
+    def test_valid_password_is_accepted(self):
+        is_valid, message = validate_registration(
+            VALID_LOGIN, VALID_PASSWORD, VALID_PASSWORD
+        )
+        self.assertTrue(is_valid, message)
+        self.assertEqual(message, "")
 
-    def test_password_with_all_required_character_classes_is_accepted(self):
-        self.assertTrue(is_valid_password(VALID_PASSWORD))
+    def test_password_of_exactly_seven_characters_is_accepted(self):
+        is_valid, message = validate_registration(VALID_LOGIN, "П1роль!", "П1роль!")
+        self.assertTrue(is_valid, message)
 
-    def test_password_with_minimum_length_is_accepted(self):
-        self.assertTrue(is_valid_password("Qw1!aaaa"))
+    def test_confirmation_differing_from_password_is_rejected(self):
+        is_valid, message = validate_registration(
+            VALID_LOGIN, VALID_PASSWORD, "ДругойПароль1!"
+        )
+        self.assertFalse(is_valid, "пароль и подтверждение различаются")
+        self.assertIn("не совпадают", message)
 
-    def test_password_with_maximum_length_is_accepted(self):
-        self.assertTrue(is_valid_password("Aa1!" + "a" * (PASSWORD_MAX_LENGTH - 4)))
+    def test_password_shorter_than_seven_characters_is_rejected(self):
+        is_valid, message = validate_registration(VALID_LOGIN, "Пар1!", "Пар1!")
+        self.assertFalse(is_valid, "пароль короче семи символов")
+        self.assertIn("не менее 7", message)
 
-    def test_password_shorter_than_minimum_length_is_rejected(self):
-        self.assertFalse(is_valid_password("Aa1!aaa"))
+    def test_password_with_latin_letters_is_rejected(self):
+        is_valid, message = validate_registration(
+            VALID_LOGIN, "Password123!", "Password123!"
+        )
+        self.assertFalse(is_valid, "латиница в пароле недопустима")
+        self.assertIn("недопустимые символы", message)
 
-    def test_password_longer_than_maximum_length_is_rejected(self):
-        self.assertFalse(is_valid_password("Aa1!" + "a" * (PASSWORD_MAX_LENGTH - 3)))
+    def test_password_with_space_is_rejected(self):
+        is_valid, message = validate_registration(
+            VALID_LOGIN, "Пароль 123!", "Пароль 123!"
+        )
+        self.assertFalse(is_valid, "пробел в пароле недопустим")
+        self.assertIn("недопустимые символы", message)
 
-    def test_password_without_lowercase_letter_is_rejected(self):
-        self.assertFalse(is_valid_password("PASSW0RD!"))
+    def test_password_without_capital_cyrillic_letter_is_rejected(self):
+        is_valid, message = validate_registration(
+            VALID_LOGIN, "пароль123!", "пароль123!"
+        )
+        self.assertFalse(is_valid, "нет заглавной буквы")
+        self.assertIn("заглавную", message)
 
-    def test_password_without_uppercase_letter_is_rejected(self):
-        self.assertFalse(is_valid_password("passw0rd!"))
+    def test_password_without_lowercase_cyrillic_letter_is_rejected(self):
+        is_valid, message = validate_registration(
+            VALID_LOGIN, "ПАРОЛЬ123!", "ПАРОЛЬ123!"
+        )
+        self.assertFalse(is_valid, "нет строчной буквы")
+        self.assertIn("строчную", message)
 
     def test_password_without_digit_is_rejected(self):
-        self.assertFalse(is_valid_password("Password!"))
+        is_valid, message = validate_registration(VALID_LOGIN, "Пароль!!!", "Пароль!!!")
+        self.assertFalse(is_valid, "нет цифры")
+        self.assertIn("цифру", message)
 
     def test_password_without_special_character_is_rejected(self):
-        self.assertFalse(is_valid_password("Password1"))
+        is_valid, message = validate_registration(VALID_LOGIN, "Пароль123", "Пароль123")
+        self.assertFalse(is_valid, "нет спецсимвола")
+        self.assertIn("спецсимвол", message)
 
-    def test_password_with_unsupported_special_character_is_rejected(self):
-        self.assertFalse(is_valid_password("Passw0rd?"))
-
-    def test_password_of_non_string_type_is_rejected(self):
-        for value in (None, 12345678):
-            with self.subTest(value=value):
-                self.assertFalse(is_valid_password(value))
-
-
-class TestEmailValidation(unittest.TestCase):
-    """Проверки правил валидации электронной почты."""
-
-    def test_email_with_correct_domain_is_accepted(self):
-        self.assertTrue(is_valid_email(VALID_EMAIL))
-
-    def test_email_with_tags_and_subdomain_is_accepted(self):
-        self.assertTrue(is_valid_email("ivan.petrov+tag@mail.example.com"))
-
-    def test_email_surrounded_by_spaces_is_trimmed_and_accepted(self):
-        self.assertTrue(is_valid_email("  " + VALID_EMAIL + "  "))
-
-    def test_email_without_at_sign_is_rejected(self):
-        self.assertFalse(is_valid_email("ivanovmail.ru"))
-
-    def test_email_with_empty_domain_is_rejected(self):
-        self.assertFalse(is_valid_email("ivanov@"))
-
-    def test_email_without_domain_tld_is_rejected(self):
-        self.assertFalse(is_valid_email("ivanov@mail."))
-
-    def test_email_with_single_letter_tld_is_rejected(self):
-        self.assertFalse(is_valid_email("ivanov@mail.c"))
-
-    def test_email_with_double_dot_in_local_part_is_rejected(self):
-        self.assertFalse(is_valid_email("ivan..petrov@mail.ru"))
-
-    def test_email_with_cyrillic_domain_is_rejected(self):
-        self.assertFalse(is_valid_email("ivanov@почта.рф"))
-
-    def test_email_with_cyrillic_local_part_is_rejected(self):
-        self.assertFalse(is_valid_email("иванов@mail.ru"))
-
-    def test_email_with_domain_starting_with_hyphen_is_rejected(self):
-        self.assertFalse(is_valid_email("ivanov@-mail.ru"))
-
-    def test_email_with_too_long_local_part_is_rejected(self):
-        self.assertFalse(is_valid_email("a" * 65 + "@mail.ru"))
-
-    def test_email_of_non_string_type_is_rejected(self):
-        for value in (None, 42):
-            with self.subTest(value=value):
-                self.assertFalse(is_valid_email(value))
-
-    def test_email_longer_than_maximum_allowed_length_is_rejected(self):
-        self.assertFalse(is_valid_email("a" * 60 + "@" + "b" * 200 + ".ru"))
-
-    def test_normalize_email_of_non_string_type_returns_empty_string(self):
-        self.assertEqual("", normalize_email(None))
+    def test_confirmation_is_compared_before_other_password_rules(self):
+        is_valid, message = validate_registration(VALID_LOGIN, "Пар1!", "Пароль123!")
+        self.assertFalse(is_valid, "пароль не проходит две проверки сразу")
+        self.assertIn("не совпадают", message)
 
 
-class TestPhoneValidation(unittest.TestCase):
-    """Проверки правил валидации номера телефона."""
+class TestStringLoginRules(unittest.TestCase):
+    def test_string_login_of_minimum_length_is_accepted(self):
+        is_valid, message = validate_registration("user_1", VALID_PASSWORD, VALID_PASSWORD)
+        self.assertTrue(is_valid, message)
 
-    def test_phone_in_russian_international_format_is_accepted(self):
-        self.assertTrue(is_valid_phone(VALID_PHONE))
-
-    def test_phone_in_belarusian_international_format_is_accepted(self):
-        self.assertTrue(is_valid_phone("+375991234567"))
-
-    def test_phone_with_separators_is_accepted_and_normalized(self):
-        self.assertTrue(is_valid_phone("+7 (999) 123-45-67"))
-        self.assertEqual("+79991234567", normalize_phone("+7 (999) 123-45-67"))
-
-    def test_phone_with_eight_placeholder_is_rejected(self):
-        self.assertFalse(is_valid_phone("8 (999) 123-45-67"))
-
-    def test_phone_without_plus_sign_is_rejected(self):
-        self.assertFalse(is_valid_phone("79991234567"))
-
-    def test_phone_with_too_few_digits_is_rejected(self):
-        self.assertFalse(is_valid_phone("+7999123456"))
-
-    def test_phone_with_too_many_digits_is_rejected(self):
-        self.assertFalse(is_valid_phone("+799912345678"))
-
-    def test_phone_with_wrong_country_code_is_rejected(self):
-        self.assertFalse(is_valid_phone("+380991234567"))
-
-    def test_phone_with_letters_inside_is_rejected(self):
-        self.assertFalse(is_valid_phone("+7999A234567"))
-
-    def test_empty_phone_is_rejected(self):
-        self.assertFalse(is_valid_phone("+-() "))
-
-    def test_phone_of_non_string_type_is_rejected(self):
-        for value in (None, 79991234567):
-            with self.subTest(value=value):
-                self.assertFalse(is_valid_phone(value))
-
-    def test_normalize_phone_of_non_string_type_returns_empty_string(self):
-        self.assertEqual("", normalize_phone(None))
-
-
-class TestValidateRegistration(unittest.TestCase):
-    """Проверки комплексной валидации формы регистрации."""
-
-    def test_fully_valid_data_produces_no_errors(self):
-        errors = validate_registration(
-            VALID_LOGIN,
-            VALID_PASSWORD,
-            VALID_PASSWORD_CONFIRM,
-            VALID_EMAIL,
-            VALID_PHONE,
+    def test_string_login_with_digits_and_underscores_is_accepted(self):
+        is_valid, message = validate_registration(
+            "Ivan_2024", VALID_PASSWORD, VALID_PASSWORD
         )
-        self.assertEqual({}, errors)
+        self.assertTrue(is_valid, message)
 
-    def test_invalid_data_produces_error_for_every_field(self):
-        errors = validate_registration("1", "pass", "other", "ivanov", "123")
-        self.assertEqual(
-            {"login", "password", "password_confirm", "email", "phone"},
-            set(errors),
+    def test_string_login_shorter_than_five_characters_is_rejected(self):
+        is_valid, message = validate_registration("user", VALID_PASSWORD, VALID_PASSWORD)
+        self.assertFalse(is_valid, "четыре символа — слишком короткий логин")
+        self.assertIn("Неверный формат логина", message)
+
+    def test_string_login_with_hyphen_is_rejected(self):
+        is_valid, message = validate_registration(
+            "user-01", VALID_PASSWORD, VALID_PASSWORD
         )
+        self.assertFalse(is_valid, "дефис недопустим в логине-строке")
+        self.assertIn("Неверный формат логина", message)
 
-    def test_errors_are_reported_as_non_empty_text(self):
-        errors = validate_registration("1", "pass", "other", "ivanov", "123")
-        for field, message in errors.items():
-            with self.subTest(field=field):
-                self.assertIsInstance(message, str)
-                self.assertTrue(message)
-
-    def test_password_confirmation_mismatch_is_reported(self):
-        errors = validate_registration(
-            VALID_LOGIN,
-            VALID_PASSWORD,
-            VALID_PASSWORD + "1",
-            VALID_EMAIL,
-            VALID_PHONE,
+    def test_string_login_with_space_is_rejected(self):
+        is_valid, message = validate_registration(
+            "user name", VALID_PASSWORD, VALID_PASSWORD
         )
-        self.assertIn("password_confirm", errors)
-        self.assertNotIn("password", errors)
+        self.assertFalse(is_valid, "пробел недопустим в логине")
+        self.assertIn("Неверный формат логина", message)
 
-    def test_already_taken_login_is_reported(self):
-        errors = validate_registration(
-            VALID_LOGIN,
-            VALID_PASSWORD,
-            VALID_PASSWORD_CONFIRM,
-            VALID_EMAIL,
-            VALID_PHONE,
-            taken_logins={VALID_LOGIN},
+    def test_string_login_with_cyrillic_letters_is_rejected(self):
+        is_valid, message = validate_registration(
+            "пользователь", VALID_PASSWORD, VALID_PASSWORD
         )
-        self.assertIn("login", errors)
+        self.assertFalse(is_valid, "в логине-строке нужна латиница")
+        self.assertIn("Неверный формат логина", message)
 
-    def test_taken_login_is_compared_case_insensitively(self):
-        errors = validate_registration(
-            VALID_LOGIN.upper(),
-            VALID_PASSWORD,
-            VALID_PASSWORD_CONFIRM,
-            VALID_EMAIL,
-            VALID_PHONE,
-            taken_logins={VALID_LOGIN},
+    def test_string_login_with_trailing_newline_is_rejected(self):
+        is_valid, message = validate_registration(
+            f"{VALID_LOGIN}\n", VALID_PASSWORD, VALID_PASSWORD
         )
-        self.assertIn("login", errors)
+        self.assertFalse(is_valid, "перевод строки в конце логина недопустим")
+        self.assertIn("Неверный формат логина", message)
 
-    def test_free_login_is_accepted_when_other_logins_are_taken(self):
-        errors = validate_registration(
-            VALID_LOGIN,
-            VALID_PASSWORD,
-            VALID_PASSWORD_CONFIRM,
-            VALID_EMAIL,
-            VALID_PHONE,
-            taken_logins={"petrov_2000", "sidorov_2001"},
+    def test_empty_login_is_rejected(self):
+        is_valid, message = validate_registration("", VALID_PASSWORD, VALID_PASSWORD)
+        self.assertFalse(is_valid, "пустой логин недопустим")
+        self.assertIn("Неверный формат логина", message)
+
+
+class TestPhoneLoginRules(unittest.TestCase):
+    def test_phone_login_in_expected_format_is_accepted(self):
+        is_valid, message = validate_registration(VALID_PHONE, VALID_PASSWORD, VALID_PASSWORD)
+        self.assertTrue(is_valid, message)
+
+    def test_phone_login_with_short_group_is_rejected(self):
+        is_valid, message = validate_registration(
+            "+7-99-123-4567", VALID_PASSWORD, VALID_PASSWORD
         )
-        self.assertNotIn("login", errors)
+        self.assertFalse(is_valid, "в группе после кода страны только две цифры")
+        self.assertIn("формат телефона", message)
 
-    def test_single_invalid_field_does_not_block_the_others(self):
-        errors = validate_registration(
-            VALID_LOGIN,
-            VALID_PASSWORD,
-            VALID_PASSWORD_CONFIRM,
-            "ivanov",
-            VALID_PHONE,
+    def test_phone_login_with_two_digit_country_code_is_rejected(self):
+        is_valid, message = validate_registration(
+            "+77-999-123-4567", VALID_PASSWORD, VALID_PASSWORD
         )
-        self.assertEqual({"email"}, set(errors))
+        self.assertFalse(is_valid, "код страны должен быть однозначным")
+        self.assertIn("формат телефона", message)
 
-
-class TestRegisterUser(unittest.TestCase):
-    """Проверки регистрации пользователя и формирования профиля."""
-
-    def test_successful_registration_returns_normalized_profile(self):
-        profile = register_user(
-            "  " + VALID_LOGIN + "  ",
-            VALID_PASSWORD,
-            VALID_PASSWORD_CONFIRM,
-            " " + VALID_EMAIL.upper() + " ",
-            "+7 (999) 123-45-67",
+    def test_login_starting_with_plus_but_not_a_phone_is_rejected(self):
+        is_valid, message = validate_registration(
+            "+нетелефон", VALID_PASSWORD, VALID_PASSWORD
         )
-        self.assertEqual(VALID_LOGIN, profile["login"])
-        self.assertEqual(VALID_EMAIL, profile["email"])
-        self.assertEqual("+79991234567", profile["phone"])
+        self.assertFalse(is_valid, "логин с плюсом должен быть телефоном")
+        self.assertIn("формат телефона", message)
 
-    def test_password_is_stored_only_as_sha256_hash(self):
-        profile = register_user(
-            VALID_LOGIN,
-            VALID_PASSWORD,
-            VALID_PASSWORD_CONFIRM,
-            VALID_EMAIL,
-            VALID_PHONE,
+    def test_phone_login_with_trailing_newline_is_rejected(self):
+        is_valid, message = validate_registration(
+            f"{VALID_PHONE}\n", VALID_PASSWORD, VALID_PASSWORD
         )
-        expected = hashlib.sha256(VALID_PASSWORD.encode("utf-8")).hexdigest()
-        self.assertEqual(expected, profile["password_hash"])
-        self.assertNotIn(VALID_PASSWORD, profile.values())
-        self.assertNotIn("password", profile)
+        self.assertFalse(is_valid, "перевод строки в конце номера недопустим")
+        self.assertIn("формат телефона", message)
 
-    def test_profile_contains_exactly_four_keys(self):
-        profile = register_user(
-            VALID_LOGIN,
-            VALID_PASSWORD,
-            VALID_PASSWORD_CONFIRM,
-            VALID_EMAIL,
-            VALID_PHONE,
+
+class TestEmailLoginRules(unittest.TestCase):
+    def test_email_login_is_accepted(self):
+        is_valid, message = validate_registration(VALID_EMAIL, VALID_PASSWORD, VALID_PASSWORD)
+        self.assertTrue(is_valid, message)
+
+    def test_email_login_with_subdomain_is_accepted(self):
+        is_valid, message = validate_registration(
+            "ivanov@mail.example.com", VALID_PASSWORD, VALID_PASSWORD
         )
-        self.assertEqual({"login", "email", "phone", "password_hash"}, set(profile))
+        self.assertTrue(is_valid, message)
 
-    def test_registration_with_invalid_data_raises_registration_error(self):
-        with self.assertRaises(RegistrationError) as context:
-            register_user("1", "pass", "other", "ivanov", "123")
-        self.assertEqual(
-            {"login", "password", "password_confirm", "email", "phone"},
-            set(context.exception.errors),
+    def test_email_login_with_plus_tag_is_accepted(self):
+        is_valid, message = validate_registration(
+            "ivanov+lab@mail.ru", VALID_PASSWORD, VALID_PASSWORD
         )
+        self.assertTrue(is_valid, message)
 
-    def test_registration_error_message_lists_all_problems(self):
-        with self.assertRaises(RegistrationError) as context:
-            register_user("1", "pass", "other", "ivanov", "123")
-        message = str(context.exception)
-        for field in ("login", "password", "email", "phone"):
-            with self.subTest(field=field):
-                self.assertIn(field, message)
+    def test_email_login_with_hyphen_at_domain_start_is_rejected(self):
+        is_valid, message = validate_registration(
+            "ivanov@-mail.ru", VALID_PASSWORD, VALID_PASSWORD
+        )
+        self.assertFalse(is_valid, "домен не может начинаться с дефиса")
+        self.assertIn("формат email", message)
 
-    def test_registration_of_taken_login_raises_registration_error(self):
-        with self.assertRaises(RegistrationError) as context:
-            register_user(
-                VALID_LOGIN,
-                VALID_PASSWORD,
-                VALID_PASSWORD_CONFIRM,
-                VALID_EMAIL,
-                VALID_PHONE,
-                taken_logins={VALID_LOGIN},
-            )
-        self.assertIn("login", context.exception.errors)
+    def test_email_login_with_trailing_dot_in_domain_is_rejected(self):
+        is_valid, message = validate_registration(
+            "ivanov@mail.ru.", VALID_PASSWORD, VALID_PASSWORD
+        )
+        self.assertFalse(is_valid, "точка в конце домена недопустима")
+        self.assertIn("формат email", message)
+
+    def test_email_login_with_double_dot_in_domain_is_rejected(self):
+        is_valid, message = validate_registration(
+            "ivanov@mail..ru", VALID_PASSWORD, VALID_PASSWORD
+        )
+        self.assertFalse(is_valid, "две точки подряд недопустимы")
+        self.assertIn("формат email", message)
+
+    def test_email_login_with_dot_before_at_sign_is_rejected(self):
+        is_valid, message = validate_registration(
+            "ivanov.@mail.ru", VALID_PASSWORD, VALID_PASSWORD
+        )
+        self.assertFalse(is_valid, "локальная часть не может заканчиваться точкой")
+        self.assertIn("формат email", message)
+
+    def test_email_login_with_numeric_domain_suffix_is_rejected(self):
+        is_valid, message = validate_registration(
+            "ivanov@mail.123", VALID_PASSWORD, VALID_PASSWORD
+        )
+        self.assertFalse(is_valid, "домен верхнего уровня не может быть числом")
+        self.assertIn("формат email", message)
+
+    def test_email_login_without_domain_is_rejected(self):
+        is_valid, message = validate_registration(
+            "ivanov@mail", VALID_PASSWORD, VALID_PASSWORD
+        )
+        self.assertFalse(is_valid, "адрес без домена недопустим")
+        self.assertIn("формат email", message)
+
+
+class TestBlacklistRules(unittest.TestCase):
+    def test_blacklisted_login_is_rejected(self):
+        is_valid, message = validate_registration("admin", VALID_PASSWORD, VALID_PASSWORD)
+        self.assertFalse(is_valid, "admin находится в черном списке")
+        self.assertIn("черном списке", message)
+
+    def test_blacklisted_login_is_rejected_regardless_of_case(self):
+        is_valid, message = validate_registration("AdMiN", VALID_PASSWORD, VALID_PASSWORD)
+        self.assertFalse(is_valid, "регистр не должен обходить черный список")
+        self.assertIn("черном списке", message)
+
+    def test_login_containing_blacklisted_word_is_allowed(self):
+        is_valid, message = validate_registration(
+            "user_admin", VALID_PASSWORD, VALID_PASSWORD
+        )
+        self.assertTrue(is_valid, "совпадение должно быть полным")
+
+    def test_every_login_from_blacklist_is_rejected(self):
+        for login in BLACKLIST:
+            with self.subTest(login=login):
+                is_valid, _ = validate_registration(
+                    login, VALID_PASSWORD, VALID_PASSWORD
+                )
+                self.assertFalse(is_valid, f"{login} должен отклоняться")
+
+
+class TestArgumentsTypeValidation(unittest.TestCase):
+    def test_non_string_login_is_rejected_with_clear_message(self):
+        is_valid, message = validate_registration(None, VALID_PASSWORD, VALID_PASSWORD)
+        self.assertFalse(is_valid, "логин должен быть строкой")
+        self.assertIn("должны быть строками", message)
+
+    def test_non_string_password_is_rejected_with_clear_message(self):
+        is_valid, message = validate_registration(VALID_LOGIN, 12345, 12345)
+        self.assertFalse(is_valid, "пароль должен быть строкой")
+        self.assertIn("должны быть строками", message)
+
+    def test_non_string_password_confirmation_is_rejected_with_clear_message(self):
+        is_valid, message = validate_registration(
+            VALID_LOGIN, VALID_PASSWORD, ["Пароль123!"]
+        )
+        self.assertFalse(is_valid, "подтверждение должно быть строкой")
+        self.assertIn("должны быть строками", message)
+
+
+class TestLoggingBehaviour(unittest.TestCase):
+    def test_validation_log_record_contains_masked_password_only(self):
+        with self.assertLogs("my_project", level="INFO") as context:
+            validate_registration(VALID_LOGIN, VALID_PASSWORD, VALID_PASSWORD)
+        output = "\n".join(context.output)
+        self.assertIn(mask_password(VALID_PASSWORD), output)
+        self.assertNotIn(VALID_PASSWORD, output)
+
+    def test_rejected_registration_is_logged_as_warning(self):
+        with self.assertLogs("my_project", level="WARNING") as context:
+            validate_registration("admin", VALID_PASSWORD, VALID_PASSWORD)
+        self.assertTrue(any(record.startswith("WARNING") for record in context.output))
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main()

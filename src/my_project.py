@@ -1,160 +1,176 @@
 import hashlib
+import logging
+import os
 import re
-from typing import Any
+import sys
 
-LOGIN_MIN_LENGTH = 3
-LOGIN_MAX_LENGTH = 20
-PASSWORD_MIN_LENGTH = 8
-PASSWORD_MAX_LENGTH = 20
-EMAIL_MAX_LENGTH = 254
-EMAIL_LOCAL_MAX_LENGTH = 64
+BLACKLIST = {"admin", "root", "user", "test", "administrator", "guest", "system"}
 
-PASSWORD_SPECIAL_CHARS = "!@#$%^&*()-_=+"
+PASSWORD_MIN_LENGTH = 7
 
-LOGIN_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
-PASSWORD_LOWER_PATTERN = re.compile(r"[a-z]")
-PASSWORD_UPPER_PATTERN = re.compile(r"[A-Z]")
-PASSWORD_DIGIT_PATTERN = re.compile(r"\d")
-PASSWORD_SPECIAL_PATTERN = re.compile(rf"[{re.escape(PASSWORD_SPECIAL_CHARS)}]")
-EMAIL_PATTERN = re.compile(
-    r"^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+"
-    r"(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
-    r"@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$"
+PHONE_PATTERN = r"\+\d-\d{3}-\d{3}-\d{4}"
+EMAIL_PATTERN = (
+    r"[a-zA-Z0-9_+-]+(?:\.[a-zA-Z0-9_+-]+)*"
+    r"@[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?"
+    r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}"
 )
-PHONE_PATTERN = re.compile(r"^\+(?:7\d{10}|375\d{9})$")
+STRING_LOGIN_PATTERN = r"[a-zA-Z0-9_]{5,}"
+PASSWORD_ALLOWED_CHARS_PATTERN = r"[а-яА-ЯёЁ0-9!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]+"
+SPECIAL_CHARS_PATTERN = r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]"
 
-PHONE_SEPARATORS = " \t-()"
-
-ERROR_LOGIN = "Логин: 3-20 символов, латиница, начинается с буквы, допустимы цифры и '_'"
-ERROR_LOGIN_TAKEN = "Логин уже занят"
-ERROR_PASSWORD = (
-    "Пароль: 8-20 символов, минимум по одной строчной, прописной букве, цифре "
-    "и спецсимволу из " + PASSWORD_SPECIAL_CHARS
-)
-ERROR_PASSWORD_CONFIRM = "Пароли не совпадают"
-ERROR_EMAIL = "E-mail в формате user@example.com"
-ERROR_PHONE = "Телефон в формате +79991234567 или +375991234567"
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 
-class RegistrationError(Exception):
-    """Ошибка регистрации с перечнем проблемных полей."""
+def setup_logging() -> None:
+    os.makedirs("logs", exist_ok=True)
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s | [%(levelname)-7s] | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler("logs/file_txt.log", encoding="utf-8"),
+        ],
+    )
 
-    def __init__(self, errors: dict[str, str]) -> None:
-        super().__init__(
-            "; ".join(f"{field}: {message}" for field, message in errors.items())
+
+def mask_password(pwd: str) -> str:
+    if not isinstance(pwd, str):
+        return "[MASKED:invalid]"
+    if not pwd:
+        return "[MASKED:empty]"
+    pwd_hash = hashlib.sha256(pwd.encode("utf-8")).hexdigest()[:8]
+    return f"[MASKED:{pwd_hash}]"
+
+
+def is_valid_phone(login: str) -> bool:
+    return bool(re.fullmatch(PHONE_PATTERN, login))
+
+
+def is_valid_email(login: str) -> bool:
+    return bool(re.fullmatch(EMAIL_PATTERN, login))
+
+
+def is_valid_string_login(login: str) -> bool:
+    return bool(re.fullmatch(STRING_LOGIN_PATTERN, login))
+
+
+def validate_registration(login: str, password: str, confirm_password: str) -> tuple:
+    if not all(isinstance(value, str) for value in (login, password, confirm_password)):
+        msg = "Логин, пароль и подтверждение пароля должны быть строками."
+        logger.warning(msg)
+        return False, msg
+
+    masked_pwd = mask_password(password)
+    masked_confirm = mask_password(confirm_password)
+    logger.info(
+        f"Запрос валидации. Логин: '{login}', Пароль: {masked_pwd}, "
+        f"Подтверждение: {masked_confirm}"
+    )
+
+    if password != confirm_password:
+        msg = "Пароль и подтверждение пароля не совпадают."
+        logger.warning(msg)
+        return False, msg
+
+    if len(password) < PASSWORD_MIN_LENGTH:
+        msg = f"Длина пароля должна быть не менее {PASSWORD_MIN_LENGTH} символов."
+        logger.warning(msg)
+        return False, msg
+
+    if not re.fullmatch(PASSWORD_ALLOWED_CHARS_PATTERN, password):
+        msg = (
+            "Пароль содержит недопустимые символы. "
+            "Разрешены только кириллица, цифры и спецсимволы."
         )
-        self.errors = errors
+        logger.warning(msg)
+        return False, msg
+
+    if not re.search(r"[А-ЯЁ]", password):
+        msg = "Пароль должен содержать хотя бы одну заглавную букву кириллицы."
+        logger.warning(msg)
+        return False, msg
+
+    if not re.search(r"[а-яё]", password):
+        msg = "Пароль должен содержать хотя бы одну строчную букву кириллицы."
+        logger.warning(msg)
+        return False, msg
+
+    if not re.search(r"\d", password):
+        msg = "Пароль должен содержать хотя бы одну цифру."
+        logger.warning(msg)
+        return False, msg
+
+    if not re.search(SPECIAL_CHARS_PATTERN, password):
+        msg = "Пароль должен содержать хотя бы один спецсимвол."
+        logger.warning(msg)
+        return False, msg
+
+    is_phone = is_valid_phone(login)
+    is_email = is_valid_email(login)
+    is_string = is_valid_string_login(login)
+
+    if login.startswith("+") and not is_phone:
+        msg = "Неверный формат телефона. Ожидаемый формат: +x-xxx-xxx-xxxx."
+        logger.warning(msg)
+        return False, msg
+
+    if "@" in login and not is_email:
+        msg = "Неверный формат email адреса."
+        logger.warning(msg)
+        return False, msg
+
+    if not (is_phone or is_email or is_string):
+        msg = "Неверный формат логина."
+        logger.warning(msg)
+        return False, msg
+
+    if login.lower() in BLACKLIST:
+        msg = f"Логин '{login}' находится в черном списке."
+        logger.warning(msg)
+        return False, msg
+
+    logger.info("Валидация успешно пройдена.")
+    return True, ""
 
 
-def normalize_phone(phone: Any) -> str:
-    """Убирает пробелы и разделители из номера телефона."""
-    if not isinstance(phone, str):
-        return ""
-    return "".join(char for char in phone.strip() if char not in PHONE_SEPARATORS)
+def main():
+    setup_logging()
+    logger.info("Приложение запущено.")
+
+    test_cases = [
+        ("user_test_01", "Пароль123!", "Пароль123!", "Успешная регистрация"),
+        (
+            "+7-999-123-4567",
+            "СекретныйПароль2024@",
+            "СекретныйПароль2024@",
+            "Успешная регистрация (телефон)",
+        ),
+        ("test@example.com", "МойПароль_99#", "МойПароль_99#", "Успешная регистрация (email)"),
+        ("valid_login", "Пароль123!", "ДругойПароль1!", "Пароли не совпадают"),
+        ("valid_login", "Пар1!", "Пар1!", "Длина пароля < 7"),
+        ("valid_login", "Password123!", "Password123!", "Пароль содержит латиницу"),
+        ("valid_login", "пароль123!", "пароль123!", "Нет заглавной буквы"),
+        ("valid_login", "ПАРОЛЬ123!", "ПАРОЛЬ123!", "Нет строчной буквы"),
+        ("valid_login", "Парольпароль!", "Парольпароль!", "Нет цифры"),
+        ("valid_login", "Пароль123", "Пароль123", "Нет спецсимвола"),
+        ("+7-99-123-4567", "Пароль123!", "Пароль123!", "Неверный формат телефона"),
+        ("admin", "Пароль123!", "Пароль123!", "Логин в черном списке"),
+        ("ab", "Пароль123!", "Пароль123!", "Логин < 5 символов"),
+    ]
+
+    for i, (login, pwd, confirm, desc) in enumerate(test_cases, 1):
+        print(f"\n--- Тест {i}: {desc} ---")
+        result, message = validate_registration(login, pwd, confirm)
+
+        if result:
+            print(f"Успех: {message if message else 'Данные корректны'}")
+        else:
+            print(f"Ошибка: {message}")
+
+    logger.info("Приложение завершило работу.")
 
 
-def normalize_email(email: Any) -> str:
-    """Убирает внешние пробелы и приводит адрес к нижнему регистру."""
-    if not isinstance(email, str):
-        return ""
-    return email.strip().lower()
-
-
-def is_valid_login(login: Any) -> bool:
-    """Проверяет логин: 3-20 символов, латиница, первый символ - буква."""
-    if not isinstance(login, str):
-        return False
-    candidate = login.strip()
-    if not LOGIN_MIN_LENGTH <= len(candidate) <= LOGIN_MAX_LENGTH:
-        return False
-    return LOGIN_PATTERN.fullmatch(candidate) is not None
-
-
-def is_valid_password(password: Any) -> bool:
-    """Проверяет пароль: 8-20 символов и все четыре обязательных класса символов."""
-    if not isinstance(password, str):
-        return False
-    if not PASSWORD_MIN_LENGTH <= len(password) <= PASSWORD_MAX_LENGTH:
-        return False
-    required = (
-        PASSWORD_LOWER_PATTERN,
-        PASSWORD_UPPER_PATTERN,
-        PASSWORD_DIGIT_PATTERN,
-        PASSWORD_SPECIAL_PATTERN,
-    )
-    return all(pattern.search(password) for pattern in required)
-
-
-def is_valid_email(email: Any) -> bool:
-    """Проверяет адрес электронной почты."""
-    if not isinstance(email, str):
-        return False
-    candidate = email.strip()
-    if len(candidate) > EMAIL_MAX_LENGTH:
-        return False
-    if len(candidate.split("@")[0]) > EMAIL_LOCAL_MAX_LENGTH:
-        return False
-    return EMAIL_PATTERN.fullmatch(candidate) is not None
-
-
-def is_valid_phone(phone: Any) -> bool:
-    """Проверяет номер телефона в международном формате."""
-    if not isinstance(phone, str):
-        return False
-    return PHONE_PATTERN.fullmatch(normalize_phone(phone)) is not None
-
-
-def validate_registration(
-    login: Any,
-    password: Any,
-    password_confirm: Any,
-    email: Any,
-    phone: Any,
-    taken_logins: set[str] | None = None,
-) -> dict[str, str]:
-
-    errors: dict[str, str] = {}
-
-    if not is_valid_login(login):
-        errors["login"] = ERROR_LOGIN
-    else:
-        occupied = {item.strip().lower() for item in (taken_logins or set())}
-        if login.strip().lower() in occupied:
-            errors["login"] = ERROR_LOGIN_TAKEN
-
-    if not is_valid_password(password):
-        errors["password"] = ERROR_PASSWORD
-
-    if not isinstance(password, str) or password != password_confirm:
-        errors["password_confirm"] = ERROR_PASSWORD_CONFIRM
-
-    if not is_valid_email(email):
-        errors["email"] = ERROR_EMAIL
-
-    if not is_valid_phone(phone):
-        errors["phone"] = ERROR_PHONE
-
-    return errors
-
-
-def register_user(
-    login: Any,
-    password: Any,
-    password_confirm: Any,
-    email: Any,
-    phone: Any,
-    taken_logins: set[str] | None = None,
-) -> dict[str, Any]:
-
-    errors = validate_registration(
-        login, password, password_confirm, email, phone, taken_logins
-    )
-    if errors:
-        raise RegistrationError(errors)
-
-    return {
-        "login": login.strip(),
-        "email": normalize_email(email),
-        "phone": normalize_phone(phone),
-        "password_hash": hashlib.sha256(password.encode("utf-8")).hexdigest(),
-    }
+if __name__ == "__main__":
+    main()
