@@ -19,12 +19,6 @@ INVALID_CONFIRM = "ДругоП1!"
 
 
 class IntegrationRegistrationFlow(unittest.TestCase):
-    """
-    Интеграционные тесты: контроллер + реальный валидатор + реальная БД
-    (SQLite). Пользовательский ввод и отправка данных внешнему серверу
-    имитируются тестовыми заглушками (unittest.mock).
-    """
-
     def setUp(self):
         self.database = RegistrationDatabase(":memory:")
         self.validator = RegistrationValidator()
@@ -113,8 +107,6 @@ class IntegrationRegistrationFlow(unittest.TestCase):
 
 
 class ControllerWithStubs(unittest.TestCase):
-    """Юнит-тесты контроллера, где все зависимости — тестовые заглушки."""
-
     def setUp(self):
         self.validator = mock.Mock()
         self.validator.validate.return_value = (True, "")
