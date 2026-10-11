@@ -53,3 +53,31 @@
 ## 📚 Полезные ссылки и официальная документация
 * 📘 [Unittest.mock — Getting Started](https://docs.python.org/3/library/unittest.mock.html) — официальные примеры использования `patch` и `Mock` для подмены ввода-вывода и сетевых запросов.
 * 📕 [Sqlite3 Module в Python](https://docs.python.org/3/library/sqlite3.html) — руководство по созданию легковесной базы данных в памяти или в файле, что идеально подходит для выполнения этой лабораторной работы.
+
+---
+
+## 🗂 Реализованная структура проекта
+
+Проект «Регистрация»: классы взаимодействуют через класс-контроллер `RegistrationController`.
+
+```text
+Lab_3/
+├── src/
+│   ├── my_project.py            # Метод валидации из ЛР1 (validate_registration)
+│   ├── validator.py             # a. Класс вычислений/валидации (RegistrationValidator)
+│   ├── database.py              # b. Класс работы с БД (RegistrationDatabase, SQLite)
+│   ├── user_interface.py        # c. Класс взаимодействия с пользователем (abc)
+│   ├── notification_service.py  # d. Класс сторонней зависимости Email-сервер (abc)
+│   └── controller.py            # e. Класс-контроллер (RegistrationController)
+├── tests/
+│   ├── test_database.py         # Юнит-тесты БД (добавление/чтение/удаление)
+│   ├── test_user_interface.py   # Юнит-тесты ввода (input имитируется заглушкой)
+│   ├── test_notification_service.py  # Юнит-тесты имитации email-сервера
+│   └── test_controller.py       # 5 интеграционных + 2 юнит-теста контроллера
+└── README.md
+```
+
+* **Интеграционные тесты** (`test_controller.py`): реальные `RegistrationValidator` и `RegistrationDatabase` (SQLite in-memory) + тестовые заглушки `unittest.mock` для пользовательского ввода и отправки на внешний сервер.
+* **Тестовые заглушки:** пользовательский ввод имитируется через `mock.Mock(...).get_registration_data.return_value` и `mock.patch("builtins.input", ...)`, отправка данных внешнему серверу — через `mock.Mock()`-заглушку нотификатора.
+* **Запуск тестов:** `python -m unittest discover -v`.
+* **Результат:** `Ran 22 tests ... OK`. БД-записи хранят `логин`, `пароль`, `подтверждение_пароля`, `результат_авторизации`, `сообщение_об_ошибке` и идентифицируются по полному ключу `(логин, пароль, подтверждение)`. Повторный ввод тех же данных берёт результат из БД без повторной валидации.
