@@ -1,5 +1,3 @@
-"""Модуль 2: веб-парсер сообщений форума."""
-
 import re
 from collections import deque
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
@@ -27,12 +25,6 @@ DEFAULT_PAGINATION_SELECTOR = (
 
 
 class ForumParser:
-    """Извлекает сообщения со страниц форумов.
-
-    Селекторы вынесены в конструктор, чтобы парсер можно было адаптировать
-    под разметку конкретного форума без изменения кода класса.
-    """
-
     def __init__(
         self,
         post_selector: str = DEFAULT_POST_SELECTOR,
@@ -58,7 +50,6 @@ class ForumParser:
         self.session = session if session is not None else requests.Session()
 
     def fetch_page(self, url: str) -> str:
-        """Скачивает HTML-код страницы с обязательными заголовками."""
         response = self.session.get(url, headers=self.headers, timeout=self.timeout)
         response.raise_for_status()
         if response.encoding is None:
@@ -66,21 +57,9 @@ class ForumParser:
         return response.text
 
     def parse_page(self, url: str) -> list[dict]:
-        """Скачивает страницу по URL и извлекает из неё сообщения."""
         return self.parse_html(self.fetch_page(url))
 
     def parse_pages(self, start_url: str, max_pages: int | None = None) -> list[dict]:
-        """Обходит страницы пагинации, начиная с ``start_url``.
-
-        Парсер автоматически переключается на следующие страницы:
-        сначала используется ссылка ``rel="next"`` / класс ``next``, затем —
-        все ссылки пагинации (``.pagination a``, ``page=2``, ``/page/3`` и т.п.).
-        Относительные ссылки разрешаются относительно текущей страницы,
-        переходы на другой домен игнорируются.
-
-        ``max_pages`` ограничивает количество обрабатываемых страниц.
-        Повторно посещённые URL пропускаются, что защищает от зацикливания.
-        """
         if max_pages is not None:
             if isinstance(max_pages, bool) or not isinstance(max_pages, int):
                 raise TypeError("max_pages должен быть целым числом или None.")
@@ -111,10 +90,6 @@ class ForumParser:
         return comments
 
     def switch_page(self, url: str, page: int) -> str:
-        """Возвращает URL с переключением на указанную страницу.
-
-        Параметр ``page`` заменяется, если он уже есть в URL, или добавляется.
-        """
         if isinstance(page, bool) or not isinstance(page, int):
             raise TypeError("Номер страницы должен быть целым числом.")
         if page < 1:
@@ -134,11 +109,6 @@ class ForumParser:
     def parse_page_range(
         self, url_template: str, start_page: int, end_page: int
     ) -> list[dict]:
-        """Обходит диапазон страниц по шаблону URL.
-
-        Шаблон обязан содержать плейсхолдер ``{page}``, например:
-        ``"https://forum.example/thread/1?page={page}"``.
-        """
         if "{page}" not in url_template:
             raise ValueError("Шаблон URL должен содержать плейсхолдер {page}.")
         if isinstance(start_page, bool) or not isinstance(start_page, int):
@@ -157,11 +127,6 @@ class ForumParser:
         return comments
 
     def parse_html(self, html: str) -> list[dict]:
-        """Извлекает сообщения из уже полученного HTML.
-
-        Возвращает список словарей с ключами ``id``, ``name`` и ``message``.
-        Сообщения без ID или без текста пропускаются.
-        """
         return self._parse_soup(self._make_soup(html))
 
     @staticmethod
@@ -238,10 +203,6 @@ class ForumParser:
         return self._normalize_url(urljoin(current_url, href))
 
     def save_to_db(self, parsed_data: list[dict], repository) -> int:
-        """Сохраняет разобранные сообщения через ``DatabaseRepository.add``.
-
-        Возвращает количество сохранённых записей.
-        """
         saved = 0
         for comment in parsed_data:
             repository.add(

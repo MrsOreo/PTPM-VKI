@@ -1,5 +1,3 @@
-"""Модуль 1: репозиторий для хранения сообщений форума в SQLite."""
-
 import sqlite3
 
 NAME_MAX_LENGTH = 256
@@ -7,12 +5,6 @@ MESSAGE_MAX_LENGTH = 8096
 
 
 class DatabaseRepository:
-    """Репозиторий сообщений форума.
-
-    Параметр ``db_path`` — путь к файлу базы данных или строка ``':memory:'``
-    для использования базы в оперативной памяти (удобно в тестах).
-    """
-
     def __init__(self, db_path: str = ":memory:"):
         if not isinstance(db_path, str):
             raise TypeError("Путь к базе данных должен быть строкой.")
@@ -66,7 +58,6 @@ class DatabaseRepository:
         return {"id": row["id"], "name": row["name"], "message": row["message"]}
 
     def get_by_id(self, comment_id: int) -> dict | None:
-        """Возвращает запись по ID или ``None``, если записи нет."""
         self._validate_comment_id(comment_id)
         row = self._connection.execute(
             "SELECT id, name, message FROM comments WHERE id = ?",
@@ -75,7 +66,6 @@ class DatabaseRepository:
         return self._row_to_dict(row) if row is not None else None
 
     def get_by_name(self, username: str) -> list[dict]:
-        """Возвращает все записи пользователя с указанным именем."""
         self._validate_name(username)
         rows = self._connection.execute(
             "SELECT id, name, message FROM comments WHERE name = ? ORDER BY id",
@@ -84,11 +74,6 @@ class DatabaseRepository:
         return [self._row_to_dict(row) for row in rows]
 
     def add(self, comment_id: int, username: str, message: str) -> bool:
-        """Добавляет новую запись.
-
-        Возвращает ``True`` при успехе. При некорректных данных или
-        дублировании ID выбрасывает исключение.
-        """
         self._validate_comment_id(comment_id)
         self._validate_name(username)
         self._validate_message(message)
@@ -104,11 +89,6 @@ class DatabaseRepository:
         return True
 
     def update(self, comment_id: int, new_message: str) -> bool:
-        """Обновляет текст сообщения по ID.
-
-        Возвращает ``True``, если запись обновлена, и ``False``, если записи
-        с таким ID нет.
-        """
         self._validate_comment_id(comment_id)
         self._validate_message(new_message)
 
@@ -120,11 +100,6 @@ class DatabaseRepository:
         return cursor.rowcount > 0
 
     def delete(self, comment_id: int) -> bool:
-        """Удаляет запись по ID.
-
-        Возвращает ``True``, если запись удалена, и ``False``, если записи
-        с таким ID нет.
-        """
         self._validate_comment_id(comment_id)
 
         cursor = self._connection.execute(
@@ -135,7 +110,6 @@ class DatabaseRepository:
         return cursor.rowcount > 0
 
     def close(self) -> None:
-        """Закрывает соединение с базой данных."""
         self._connection.close()
 
     def __enter__(self) -> "DatabaseRepository":

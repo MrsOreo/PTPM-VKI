@@ -20,7 +20,6 @@ class DatabaseRepositoryTest(unittest.TestCase):
     def tearDown(self):
         self.repo.close()
 
-    # --- add ---------------------------------------------------------
     def test_add_returns_true_and_saves_record(self):
         self.assertTrue(self.repo.add(1, "alice", "Привет, мир!"))
 
@@ -49,7 +48,6 @@ class DatabaseRepositoryTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.repo.add(1, None, "Текст")
 
-    # --- get_by_id ---------------------------------------------------
     def test_get_by_id_returns_record(self):
         self.repo.add(42, "bob", "<b>Жирный</b> текст")
 
@@ -63,7 +61,6 @@ class DatabaseRepositoryTest(unittest.TestCase):
     def test_get_by_id_returns_none_for_missing_record(self):
         self.assertIsNone(self.repo.get_by_id(999))
 
-    # --- get_by_name -------------------------------------------------
     def test_get_by_name_returns_all_user_records(self):
         self.repo.add(1, "alice", "Первое")
         self.repo.add(2, "bob", "Чужое")
@@ -77,7 +74,6 @@ class DatabaseRepositoryTest(unittest.TestCase):
     def test_get_by_name_returns_empty_list_for_unknown_user(self):
         self.assertEqual([], self.repo.get_by_name("nobody"))
 
-    # --- update ------------------------------------------------------
     def test_update_changes_existing_message(self):
         self.repo.add(1, "alice", "Старый текст")
 
@@ -94,7 +90,6 @@ class DatabaseRepositoryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.repo.update(1, "m" * (MESSAGE_MAX_LENGTH + 1))
 
-    # --- delete ------------------------------------------------------
     def test_delete_removes_existing_record(self):
         self.repo.add(1, "alice", "Удалить меня")
 

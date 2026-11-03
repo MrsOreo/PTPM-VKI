@@ -34,7 +34,6 @@ class ForumParserTest(unittest.TestCase):
         }
         self.parser = ForumParser()
 
-    # --- разбор одной страницы ---------------------------------------
     def test_parse_html_extracts_all_posts_with_ids(self):
         comments = self.parser.parse_html(self.html)
 
@@ -78,7 +77,6 @@ class ForumParserTest(unittest.TestCase):
         )
         self.assertEqual(3, len(comments))
 
-    # --- пагинация ---------------------------------------------------
     def test_parse_pages_follows_next_links_through_all_pages(self):
         self.parser.fetch_page = MagicMock(
             side_effect=lambda url: self.pages[url]
@@ -224,7 +222,6 @@ class ForumParserTest(unittest.TestCase):
                 "https://forum.example/threads/1", 1, 2
             )
 
-    # --- сеть и сохранение -------------------------------------------
     def test_fetch_page_sends_user_agent_header(self):
         response = MagicMock()
         response.text = self.html
