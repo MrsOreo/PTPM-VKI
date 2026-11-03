@@ -10,27 +10,83 @@ sys.path.insert(
 from src.database import DatabaseRepository
 from src.parser import ForumParser
 
-FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
-START_URL = "https://forum.example/threads/1/page_1.html"
+START_URL = "https://habr.com/ru/articles/1107748/comments/"
 PAGE_URLS = [
     START_URL,
-    "https://forum.example/threads/1/page_2.html",
-    "https://forum.example/threads/1/page_3.html",
+    "https://habr.com/ru/articles/1107748/comments/?page=2",
+    "https://habr.com/ru/articles/1107748/comments/?page=3",
 ]
 
+FORUM_HTML = """
+<div class="tm-comments__tree" data-comments-list>
+    <section class="tm-comment-thread">
+        <article class="tm-comment-thread__comment" data-id="101">
+            <a class="tm-user-info__username">alice</a>
+            <div class="tm-comment__body-content">Привет, <b>мир</b>!</div>
+        </article>
+    </section>
+    <section class="tm-comment-thread">
+        <article class="tm-comment-thread__comment" id="post-102">
+            <a class="tm-user-info__username">bob</a>
+            <div class="tm-comment__body-content"><p>Второе сообщение</p></div>
+        </article>
+    </section>
+    <section class="tm-comment-thread">
+        <article class="tm-comment-thread__comment" data-comment-id="103">
+            <a class="tm-user-info__username">alice</a>
+            <div class="tm-comment__body-content">Третье и последнее</div>
+        </article>
+    </section>
+    <section class="tm-comment-thread">
+        <article class="tm-comment-thread__comment">
+            <a class="tm-user-info__username">no-id</a>
+            <div class="tm-comment__body-content">Сообщение без ID должно быть пропущено</div>
+        </article>
+    </section>
+</div>
+"""
 
-def read_fixture(filename: str) -> str:
-    with open(os.path.join(FIXTURES_DIR, filename), encoding="utf-8") as fixture:
-        return fixture.read()
+PAGE_1_HTML = """
+<div class="tm-comments__tree" data-comments-list>
+    <article class="tm-comment-thread__comment" data-id="201">
+        <a class="tm-user-info__username">alice</a>
+        <div class="tm-comment__body-content">Первая страница, сообщение 1</div>
+    </article>
+    <article class="tm-comment-thread__comment" data-id="202">
+        <a class="tm-user-info__username">bob</a>
+        <div class="tm-comment__body-content">Первая страница, сообщение 2</div>
+    </article>
+</div>
+<a rel="next" href="?page=2">Следующая страница</a>
+"""
+
+PAGE_2_HTML = """
+<div class="tm-comments__tree" data-comments-list>
+    <article class="tm-comment-thread__comment" data-id="203">
+        <a class="tm-user-info__username">carol</a>
+        <div class="tm-comment__body-content">Вторая страница, сообщение 3</div>
+    </article>
+</div>
+<a rel="next" href="?page=3">Следующая страница</a>
+"""
+
+PAGE_3_HTML = """
+<div class="tm-comments__tree" data-comments-list>
+    <article class="tm-comment-thread__comment" data-id="204">
+        <a class="tm-user-info__username">dave</a>
+        <div class="tm-comment__body-content">Третья страница, сообщение 4</div>
+    </article>
+</div>
+"""
 
 
 class ForumParserTest(unittest.TestCase):
     def setUp(self):
-        self.html = read_fixture("forum_page.html")
+        self.html = FORUM_HTML
         self.pages = {
-            PAGE_URLS[0]: read_fixture("page_1.html"),
-            PAGE_URLS[1]: read_fixture("page_2.html"),
-            PAGE_URLS[2]: read_fixture("page_3.html"),
+            PAGE_URLS[0]: PAGE_1_HTML,
+            PAGE_URLS[1]: PAGE_2_HTML,
+            PAGE_URLS[2]: PAGE_3_HTML,
         }
         self.parser = ForumParser()
 
@@ -70,10 +126,10 @@ class ForumParserTest(unittest.TestCase):
     def test_parse_page_fetches_html_and_parses_it(self):
         self.parser.fetch_page = MagicMock(return_value=self.html)
 
-        comments = self.parser.parse_page("https://forum.example/thread/1")
+        comments = self.parser.parse_page("https://habr.com/ru/articles/1107748/")
 
         self.parser.fetch_page.assert_called_once_with(
-            "https://forum.example/thread/1"
+            "https://habr.com/ru/articles/1107748/"
         )
         self.assertEqual(3, len(comments))
 
@@ -118,16 +174,16 @@ class ForumParserTest(unittest.TestCase):
 
     def test_parse_pages_protects_against_link_loops(self):
         loop_html = (
-            '<div class="post" data-id="301">'
-            '<span class="username">loop</span>'
-            '<div class="message">Зацикленная страница</div>'
-            "</div>"
+            '<article class="tm-comment-thread__comment" data-id="301">'
+            '<a class="tm-user-info__username">loop</a>'
+            '<div class="tm-comment__body-content">Зацикленная страница</div>'
+            "</article>"
             '<a rel="next" href="loop.html">Следующая</a>'
         )
         self.parser.fetch_page = MagicMock(return_value=loop_html)
 
         comments = self.parser.parse_pages(
-            "https://forum.example/threads/1/loop.html"
+            "https://habr.com/ru/articles/1107748/comments/loop.html"
         )
 
         self.assertEqual([301], [comment["id"] for comment in comments])
@@ -146,16 +202,16 @@ class ForumParserTest(unittest.TestCase):
                 for number in (1, 2, 3)
             )
             return (
-                f'<div class="post" data-id="{comment_id}">'
-                f'<span class="username">user{page_number}</span>'
-                f'<div class="message">Страница {page_number}</div>'
-                "</div>"
+                f'<article class="tm-comment-thread__comment" data-id="{comment_id}">'
+                f'<a class="tm-user-info__username">user{page_number}</a>'
+                f'<div class="tm-comment__body-content">Страница {page_number}</div>'
+                "</article>"
                 f'<div class="pagination">{links}</div>'
                 '<a class="page-link" href="https://other.example/thread?page=2">'
                 "Другой сайт</a>"
             )
 
-        base_url = "https://forum.example/thread"
+        base_url = "https://habr.com/ru/articles/1107748/comments/"
         pages = {
             f"{base_url}?page={page}": make_page(page, 400 + page)
             for page in (1, 2, 3)
@@ -171,21 +227,23 @@ class ForumParserTest(unittest.TestCase):
         )
 
     def test_switch_page_replaces_existing_page_parameter(self):
-        url = "https://forum.example/thread?sort=asc&page=1"
+        url = "https://habr.com/ru/articles/1107748/comments/?sort=asc&page=1"
 
         switched = self.parser.switch_page(url, 3)
 
         self.assertEqual(
-            "https://forum.example/thread?sort=asc&page=3", switched
+            "https://habr.com/ru/articles/1107748/comments/?sort=asc&page=3",
+            switched,
         )
 
     def test_switch_page_adds_page_parameter(self):
-        url = "https://forum.example/thread?sort=asc"
+        url = "https://habr.com/ru/articles/1107748/comments/?sort=asc"
 
         switched = self.parser.switch_page(url, 2)
 
         self.assertEqual(
-            "https://forum.example/thread?sort=asc&page=2", switched
+            "https://habr.com/ru/articles/1107748/comments/?sort=asc&page=2",
+            switched,
         )
 
     def test_switch_page_validates_page_number(self):
@@ -203,14 +261,14 @@ class ForumParserTest(unittest.TestCase):
             return self.pages[PAGE_URLS[page_number - 1]]
 
         self.parser.fetch_page = MagicMock(side_effect=fake_fetch)
-        template = "https://forum.example/threads/1?page={page}"
+        template = "https://habr.com/ru/articles/1107748/comments/?page={page}"
 
         comments = self.parser.parse_page_range(template, 1, 2)
 
         self.assertEqual(
             [
-                "https://forum.example/threads/1?page=1",
-                "https://forum.example/threads/1?page=2",
+                "https://habr.com/ru/articles/1107748/comments/?page=1",
+                "https://habr.com/ru/articles/1107748/comments/?page=2",
             ],
             requested_urls,
         )
@@ -219,7 +277,7 @@ class ForumParserTest(unittest.TestCase):
     def test_parse_page_range_requires_page_placeholder(self):
         with self.assertRaises(ValueError):
             self.parser.parse_page_range(
-                "https://forum.example/threads/1", 1, 2
+                "https://habr.com/ru/articles/1107748/comments/", 1, 2
             )
 
     def test_fetch_page_sends_user_agent_header(self):
@@ -229,7 +287,7 @@ class ForumParserTest(unittest.TestCase):
         session.get.return_value = response
         parser = ForumParser(session=session)
 
-        result = parser.fetch_page("https://forum.example/thread/1")
+        result = parser.fetch_page("https://habr.com/ru/articles/1107748/")
 
         self.assertEqual(self.html, result)
         response.raise_for_status.assert_called_once()

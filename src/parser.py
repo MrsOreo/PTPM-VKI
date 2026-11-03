@@ -14,10 +14,16 @@ DEFAULT_HEADERS = {
     "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
 }
 
-DEFAULT_POST_SELECTOR = ".post"
-DEFAULT_NAME_SELECTOR = ".username"
-DEFAULT_MESSAGE_SELECTOR = ".message"
-DEFAULT_ID_ATTRIBUTES = ("data-id", "data-comment-id", "data-post-id", "id")
+DEFAULT_POST_SELECTOR = ".tm-comment-thread__comment"
+DEFAULT_NAME_SELECTOR = ".tm-user-info__username"
+DEFAULT_MESSAGE_SELECTOR = ".tm-comment__body-content"
+DEFAULT_ID_ATTRIBUTES = (
+    "data-comment-body",
+    "data-id",
+    "data-comment-id",
+    "data-post-id",
+    "id",
+)
 DEFAULT_NEXT_PAGE_SELECTOR = "a[rel='next'], a.next"
 DEFAULT_PAGINATION_SELECTOR = (
     ".pagination a, a.page-link, a[href*='page='], a[href*='/page/']"
